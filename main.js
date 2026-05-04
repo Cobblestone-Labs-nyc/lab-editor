@@ -257,6 +257,10 @@ function ensureNoteLabel(obj) {
   const div = document.createElement('div');
   div.className = 'note-label';
   const label = new CSS2DObject(div);
+  // Anchor the label's bottom-center to its world position. CSS2DRenderer reads .center
+  // and writes the corresponding translate() into element.style.transform every frame, so
+  // setting an external CSS transform doesn't work — must be done here.
+  label.center.set(0.5, 1.0);
   scene.add(label);
   obj.userData.label = label;
   return label;

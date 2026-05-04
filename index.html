@@ -49,9 +49,8 @@
       pointer-events: none;
       white-space: pre-wrap;
       box-shadow: 0 2px 8px rgba(0,0,0,0.5);
-      transform: translate(-50%, -100%) translateY(-6px);
+      margin-bottom: 6px; /* gap between label and the object's top — applied via the box, not transform */
     }
-    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
     #err { position: absolute; top: 10px; left: 10px; right: 10px; max-height: 40vh; overflow: auto; padding: 10px; background: #200; color: #f88; font-size: 11px; display: none; white-space: pre-wrap; border: 1px solid #600; z-index: 100; }
   </style>
 </head>
@@ -148,6 +147,6 @@
     }
   </script>
   <!-- Bump the v= query string whenever main.js changes meaningfully so deployed CDNs (e.g. Cloudflare's 4h cache) don't serve a stale module. -->
-  <script type="module" src="./main.js?v=20260504-3"></script>
+  <script type="module" src="./main.js?v=20260504-4"></script>
 </body>
 </html>
