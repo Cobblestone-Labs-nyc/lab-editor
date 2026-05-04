@@ -147,6 +147,7 @@
       }
     }
   </script>
-  <script type="module" src="./main.js"></script>
+  <!-- Bump the v= query string whenever main.js changes meaningfully so deployed CDNs (e.g. Cloudflare's 4h cache) don't serve a stale module. -->
+  <script type="module" src="./main.js?v=20260504-3"></script>
 </body>
 </html>

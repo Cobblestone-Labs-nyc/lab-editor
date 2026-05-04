@@ -542,23 +542,27 @@ function updateStorageBadge() {
 }
 
 async function initLayoutSource() {
-  // Probe the server. 200 = use it and load. 404 = server is up but empty (still use it for writes).
+  // Probe the server. 200 + JSON = use it and load. 404 = server is up but empty (still use it
+  // for writes). 200 + non-JSON usually means a static-host SPA fallback served index.html for
+  // an unknown route — treat that as "no API" and fall back to localStorage.
   try {
     const r = await fetch(SERVER_LAYOUT_URL, { cache: 'no-store' });
-    if (r.ok) {
-      serverAvailable = true;
-      updateStorageBadge();
-      const data = await r.json();
-      deserializeLayout(data);
-      return;
-    }
     if (r.status === 404) {
       serverAvailable = true;
       updateStorageBadge();
       return;
     }
+    if (r.ok) {
+      const ct = (r.headers.get('Content-Type') || '').toLowerCase();
+      if (!ct.includes('json')) throw new Error('api endpoint did not return json');
+      const data = await r.json();
+      serverAvailable = true;
+      updateStorageBadge();
+      deserializeLayout(data);
+      return;
+    }
   } catch (_) {
-    // network/connect error — server isn't running. Fall through.
+    // network/connect/parse error — fall through to localStorage.
   }
   serverAvailable = false;
   updateStorageBadge();
