@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Lab Editor</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #0a0a0a; color: #ccc; font-family: ui-monospace, Menlo, monospace; font-size: 12px; height: 100%; overflow: hidden; }
+    #app { position: fixed; inset: 0; display: grid; grid-template-columns: 240px 1fr 280px; }
+    #left, #right { background: #0a0a0a; border-right: 1px solid #1f1f1f; padding: 14px; overflow: auto; }
+    #right { border-right: none; border-left: 1px solid #1f1f1f; }
+    #stage { position: relative; background: #050505; }
+    #canvas { display: block; width: 100%; height: 100%; }
+    h2 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.2em; color: #666; margin: 0 0 10px; font-weight: normal; }
+    h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: #555; margin: 18px 0 8px; font-weight: normal; }
+    button { width: 100%; background: #111; color: #ccc; border: 1px solid #2a2a2a; padding: 8px 10px; font-family: inherit; font-size: 12px; text-align: left; cursor: pointer; margin-bottom: 6px; }
+    button:hover { border-color: #66ffee; color: #66ffee; }
+    button.danger:hover { border-color: #ff6688; color: #ff6688; }
+    .row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .row button { margin-bottom: 0; }
+    label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.15em; color: #666; display: block; margin: 8px 0 4px; }
+    input[type="number"], input[type="text"] { width: 100%; background: #111; color: #ccc; border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px; }
+    .vec3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+    #items { list-style: none; margin: 0; padding: 0; }
+    #items li { padding: 6px 8px; border: 1px solid #1f1f1f; margin-bottom: 4px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+    #items li:hover { border-color: #2f2f2f; }
+    #items li.sel { border-color: #66ffee; color: #66ffee; }
+    #items li .x { color: #555; cursor: pointer; padding: 0 4px; }
+    #items li .x:hover { color: #ff6688; }
+    #empty { color: #444; font-style: italic; }
+    .hint { color: #444; font-size: 10px; line-height: 1.6; margin-top: 8px; }
+    .hint kbd { background: #161616; border: 1px solid #2a2a2a; padding: 1px 5px; border-radius: 2px; color: #888; font-family: inherit; }
+    #status { position: absolute; bottom: 10px; left: 10px; color: #444; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+    #err { position: absolute; top: 10px; left: 10px; right: 10px; max-height: 40vh; overflow: auto; padding: 10px; background: #200; color: #f88; font-size: 11px; display: none; white-space: pre-wrap; border: 1px solid #600; z-index: 100; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="left">
+      <h2>Add</h2>
+      <button data-add="wall">+ Wall</button>
+      <button data-add="door">+ Door</button>
+      <button data-add="box">+ Box</button>
+
+      <h3>Views</h3>
+      <button data-view="top">Top</button>
+
+      <h3>Scene</h3>
+      <div class="row">
+        <button id="toggleBase">Hide Base</button>
+        <button id="toggleBounds">Hide Bounds</button>
+      </div>
+
+      <h3>Layout</h3>
+      <button id="exportBtn">Export JSON</button>
+      <button id="importBtn">Import JSON</button>
+      <button id="clearBtn" class="danger">Clear All</button>
+
+      <h3>Camera</h3>
+      <p class="hint" id="camHint"></p>
+
+      <h3>Editing</h3>
+      <p class="hint">
+        <kbd>W</kbd> translate · <kbd>E</kbd> rotate · <kbd>R</kbd> scale<br>
+        <kbd>Del</kbd> delete · <kbd>Esc</kbd> deselect<br>
+        <kbd>Shift</kbd>+drag gizmo = snap (10°/0.1u)
+      </p>
+    </aside>
+
+    <div id="stage">
+      <canvas id="canvas"></canvas>
+      <div id="status">loading base model…</div>
+      <pre id="err"></pre>
+    </div>
+
+    <aside id="right">
+      <h2>Items</h2>
+      <ul id="items"></ul>
+      <p id="empty">No objects placed yet.</p>
+
+      <div id="inspector" style="display:none">
+        <h3>Selected</h3>
+        <label>Name</label>
+        <input id="inName" type="text">
+
+        <label>Position</label>
+        <div class="vec3">
+          <input id="inPx" type="number" step="0.05">
+          <input id="inPy" type="number" step="0.05">
+          <input id="inPz" type="number" step="0.05">
+        </div>
+
+        <label>Rotation (deg)</label>
+        <div class="vec3">
+          <input id="inRx" type="number" step="1">
+          <input id="inRy" type="number" step="1">
+          <input id="inRz" type="number" step="1">
+        </div>
+
+        <label>Size</label>
+        <div class="vec3">
+          <input id="inSx" type="number" step="0.05" min="0.01">
+          <input id="inSy" type="number" step="0.05" min="0.01">
+          <input id="inSz" type="number" step="0.05" min="0.01">
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const errEl = document.getElementById('err');
+    function showErr(msg) { errEl.style.display = 'block'; errEl.textContent += msg + '\n'; }
+    window.addEventListener('error', e => showErr('Error: ' + (e.message || e.error?.message) + '\n  at ' + (e.filename || '?') + ':' + (e.lineno || '?')));
+    window.addEventListener('unhandledrejection', e => showErr('Promise rejection: ' + (e.reason?.message || e.reason)));
+  </script>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
