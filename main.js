@@ -8,6 +8,8 @@ import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer
 const BASE_GLB = './54lab.glb';
 const STORAGE_KEY = 'labEditor.layout.v1';
 const SERVER_LAYOUT_URL = './api/layout';   // present only when the optional server.py is running
+// Y position newly-added objects spawn at (literal world Y of the object's center, not its bottom).
+const DEFAULT_SPAWN_Y = 1.4;
 
 // ---------- Renderer / scene ----------
 const canvas = document.getElementById('canvas');
@@ -239,11 +241,9 @@ function makeObject(kind, opts = {}) {
 
 function addAtTarget(kind) {
   const mesh = makeObject(kind);
-  // Place at orbit target with the bottom resting at floor (y = baseBounds.min.y) when we have bounds.
+  // Place at orbit-target XZ, fixed Y. Users drag/edit from there; we don't try to floor-snap.
   const t = orbit.target.clone();
-  if (baseBounds) {
-    t.y = baseBounds.min.y + (mesh.scale.y * 0.5);
-  }
+  t.y = DEFAULT_SPAWN_Y;
   mesh.position.copy(t);
   select(mesh);
   refreshItemList();
