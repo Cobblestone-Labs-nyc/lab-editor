@@ -3,9 +3,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 
 const BASE_GLB = './54lab.glb';
 const STORAGE_KEY = 'labEditor.layout.v1';
+const SERVER_LAYOUT_URL = './api/layout';   // present only when the optional server.py is running
 
 // ---------- Renderer / scene ----------
 const canvas = document.getElementById('canvas');
@@ -26,6 +28,14 @@ scene.add(sun);
 
 const grid = new THREE.GridHelper(40, 40, 0x222244, 0x111122);
 scene.add(grid);
+
+// CSS2D overlay for billboard note labels — stays world-anchored, always faces camera.
+const labelRenderer = new CSS2DRenderer();
+labelRenderer.domElement.style.position = 'absolute';
+labelRenderer.domElement.style.top = '0';
+labelRenderer.domElement.style.left = '0';
+labelRenderer.domElement.style.pointerEvents = 'none';
+document.getElementById('stage').appendChild(labelRenderer.domElement);
 
 // ---------- Controls ----------
 const orbit = new OrbitControls(camera, canvas);
@@ -91,7 +101,7 @@ loader.load(
     sizeTransformControls(baseBounds);
 
     status.textContent = formatBoundsLabel(baseBounds);
-    loadLayoutFromStorage();
+    initLayoutSource();
   },
   (xhr) => {
     if (xhr.lengthComputable) {
@@ -155,6 +165,40 @@ function sizeTransformControls(b) {
   tcontrol.setSize(Math.max(0.4, Math.min(2.0, radius * 0.04)));
 }
 
+// Animate the camera to a new position/target with eased lerp; ignores user input while running.
+let _animRAF = null;
+function animateCamera(toPos, toTarget, duration = 350) {
+  const fromPos = camera.position.clone();
+  const fromTarget = orbit.target.clone();
+  const start = performance.now();
+  if (_animRAF) cancelAnimationFrame(_animRAF);
+  orbit.enabled = false;
+  function step(now) {
+    const t = Math.min(1, (now - start) / duration);
+    const e = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // easeInOutQuad
+    camera.position.lerpVectors(fromPos, toPos, e);
+    orbit.target.lerpVectors(fromTarget, toTarget, e);
+    orbit.update();
+    if (t < 1) _animRAF = requestAnimationFrame(step);
+    else { _animRAF = null; orbit.enabled = true; }
+  }
+  _animRAF = requestAnimationFrame(step);
+}
+
+// Frame an object: keep current view direction, dolly close enough that the object fills ~1/distMul of frame.
+const _focusBox = new THREE.Box3();
+function focusOn(obj, distMul = 2.4) {
+  _focusBox.setFromObject(obj);
+  const center = _focusBox.getCenter(new THREE.Vector3());
+  const size   = _focusBox.getSize(new THREE.Vector3());
+  const radius = Math.max(size.x, size.y, size.z, 0.1);
+  const dir = new THREE.Vector3().subVectors(camera.position, orbit.target);
+  if (dir.lengthSq() < 1e-6) dir.set(1, 0.7, 1);
+  dir.normalize();
+  const newPos = center.clone().addScaledVector(dir, radius * distMul);
+  animateCamera(newPos, center);
+}
+
 function viewPreset(name) {
   if (!baseBounds) return;
   const center = new THREE.Vector3(); baseBounds.getCenter(center);
@@ -206,9 +250,41 @@ function addAtTarget(kind) {
   scheduleSave();
 }
 
+// Note labels: world-anchored CSS2DObjects placed above each annotated object.
+// Created lazily — an object only owns a label once it has a non-empty note.
+function ensureNoteLabel(obj) {
+  if (obj.userData.label) return obj.userData.label;
+  const div = document.createElement('div');
+  div.className = 'note-label';
+  const label = new CSS2DObject(div);
+  scene.add(label);
+  obj.userData.label = label;
+  return label;
+}
+
+function setObjectNote(obj, text) {
+  obj.userData.note = text || '';
+  if (text && text.trim().length) {
+    const label = ensureNoteLabel(obj);
+    label.element.textContent = text;
+    label.visible = true;
+  } else if (obj.userData.label) {
+    obj.userData.label.visible = false;
+  }
+}
+
+function disposeNoteLabel(obj) {
+  const label = obj.userData.label;
+  if (!label) return;
+  scene.remove(label);
+  label.element?.remove?.();
+  obj.userData.label = null;
+}
+
 function deleteObject(obj) {
   if (!obj) return;
   if (selected === obj) deselect();
+  disposeNoteLabel(obj);
   placeable.remove(obj);
   obj.geometry?.dispose();
   obj.material?.dispose();
@@ -348,12 +424,14 @@ const inName = document.getElementById('inName');
 const inP = ['inPx','inPy','inPz'].map(id => document.getElementById(id));
 const inR = ['inRx','inRy','inRz'].map(id => document.getElementById(id));
 const inS = ['inSx','inSy','inSz'].map(id => document.getElementById(id));
+const inNote = document.getElementById('inNote');
 
 function showInspector(v) { inspectorEl.style.display = v ? 'block' : 'none'; }
 
 function syncInspectorFromObject() {
   if (!selected) return;
-  if (document.activeElement && document.activeElement.matches('#inspector input')) return;
+  // Don't clobber an input the user is currently typing into.
+  if (document.activeElement && document.activeElement.matches('#inspector input, #inspector textarea')) return;
   inName.value = selected.userData.name || '';
   const p = selected.position, r = selected.rotation, s = selected.scale;
   inP[0].value = p.x.toFixed(3); inP[1].value = p.y.toFixed(3); inP[2].value = p.z.toFixed(3);
@@ -361,6 +439,7 @@ function syncInspectorFromObject() {
   inR[1].value = THREE.MathUtils.radToDeg(r.y).toFixed(1);
   inR[2].value = THREE.MathUtils.radToDeg(r.z).toFixed(1);
   inS[0].value = s.x.toFixed(3); inS[1].value = s.y.toFixed(3); inS[2].value = s.z.toFixed(3);
+  inNote.value = selected.userData.note || '';
 }
 
 inName.addEventListener('input', () => {
@@ -385,6 +464,11 @@ inS.forEach((el, i) => el.addEventListener('input', () => {
   selected.scale.setComponent(i, v);
   scheduleSave();
 }));
+inNote.addEventListener('input', () => {
+  if (!selected) return;
+  setObjectNote(selected, inNote.value);
+  scheduleSave();
+});
 
 // ---------- Item list ----------
 const itemsEl = document.getElementById('items');
@@ -398,7 +482,9 @@ function refreshItemList() {
     if (o === selected) li.classList.add('sel');
     const label = document.createElement('span');
     label.textContent = o.userData.name || o.userData.kind;
-    label.addEventListener('click', () => select(o));
+    label.title = 'click to focus camera on this object';
+    label.style.flex = '1';
+    label.addEventListener('click', () => { select(o); focusOn(o); });
     const x = document.createElement('span');
     x.className = 'x';
     x.textContent = '×';
@@ -417,6 +503,7 @@ function serializeLayout() {
     items: placeable.children.map(o => ({
       kind: o.userData.kind,
       name: o.userData.name,
+      note: o.userData.note || '',
       position: o.position.toArray(),
       rotation: [o.rotation.x, o.rotation.y, o.rotation.z],
       scale: o.scale.toArray(),
@@ -431,17 +518,78 @@ function deserializeLayout(data) {
     m.position.fromArray(it.position);
     m.rotation.set(it.rotation[0], it.rotation[1], it.rotation[2]);
     m.scale.fromArray(it.scale);
+    if (it.note) setObjectNote(m, it.note);
   }
   refreshItemList();
+}
+
+// ---------- Storage backends ----------
+// Try a server-side endpoint first (server.py provides it). If that's not available we fall
+// back to per-browser localStorage. Last-write-wins; no merge / locking. Documented in README.
+let serverAvailable = false;
+const storageBadge = document.getElementById('storage');
+
+function updateStorageBadge() {
+  if (serverAvailable) {
+    storageBadge.className = 'shared';
+    storageBadge.textContent = 'shared layout';
+    storageBadge.title = 'saving to server (visible to everyone)';
+  } else {
+    storageBadge.className = 'local';
+    storageBadge.textContent = 'local only';
+    storageBadge.title = 'no server endpoint — saving to this browser only';
+  }
+}
+
+async function initLayoutSource() {
+  // Probe the server. 200 = use it and load. 404 = server is up but empty (still use it for writes).
+  try {
+    const r = await fetch(SERVER_LAYOUT_URL, { cache: 'no-store' });
+    if (r.ok) {
+      serverAvailable = true;
+      updateStorageBadge();
+      const data = await r.json();
+      deserializeLayout(data);
+      return;
+    }
+    if (r.status === 404) {
+      serverAvailable = true;
+      updateStorageBadge();
+      return;
+    }
+  } catch (_) {
+    // network/connect error — server isn't running. Fall through.
+  }
+  serverAvailable = false;
+  updateStorageBadge();
+  loadLayoutFromStorage();
+}
+
+async function persistNow() {
+  const data = serializeLayout();
+  if (serverAvailable) {
+    try {
+      const r = await fetch(SERVER_LAYOUT_URL, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (!r.ok) throw new Error('server PUT ' + r.status);
+      return;
+    } catch (e) {
+      console.warn('server save failed; falling back to localStorage', e);
+      serverAvailable = false;
+      updateStorageBadge();
+    }
+  }
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); }
+  catch (e) { console.warn('localStorage save failed:', e); }
 }
 
 let saveTimer = null;
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(serializeLayout())); }
-    catch (e) { console.warn('save failed:', e); }
-  }, 250);
+  saveTimer = setTimeout(persistNow, 300);
 }
 
 function loadLayoutFromStorage() {
@@ -457,15 +605,32 @@ function resize() {
   const stage = document.getElementById('stage');
   const w = stage.clientWidth, h = stage.clientHeight;
   renderer.setSize(w, h, false);
+  labelRenderer.setSize(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
 resize();
 
+const _labelBox = new THREE.Box3();
+function updateNoteLabels() {
+  // Pin each label to the world-space top of its object's current bounding box, so
+  // rotated/scaled objects still get their note hovering above them.
+  for (const obj of placeable.children) {
+    const label = obj.userData.label;
+    if (!label || !label.visible) continue;
+    _labelBox.setFromObject(obj);
+    const cx = (_labelBox.min.x + _labelBox.max.x) * 0.5;
+    const cz = (_labelBox.min.z + _labelBox.max.z) * 0.5;
+    label.position.set(cx, _labelBox.max.y, cz);
+  }
+}
+
 function tick() {
   orbit.update();
+  updateNoteLabels();
   renderer.render(scene, camera);
+  labelRenderer.render(scene, camera);
   requestAnimationFrame(tick);
 }
 tick();

@@ -32,6 +32,26 @@
     .hint { color: #444; font-size: 10px; line-height: 1.6; margin-top: 8px; }
     .hint kbd { background: #161616; border: 1px solid #2a2a2a; padding: 1px 5px; border-radius: 2px; color: #888; font-family: inherit; }
     #status { position: absolute; bottom: 10px; left: 10px; color: #444; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+    #storage { position: absolute; bottom: 10px; right: 10px; color: #444; font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase; }
+    #storage.shared { color: #66ffee; }
+    #storage.local { color: #ffaa66; }
+    textarea { width: 100%; background: #111; color: #ccc; border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px; resize: vertical; min-height: 60px; }
+    .note-label {
+      background: rgba(8, 8, 8, 0.92);
+      border: 1px solid #66ffee;
+      color: #cfeae5;
+      padding: 4px 8px;
+      font-family: ui-monospace, Menlo, monospace;
+      font-size: 11px;
+      border-radius: 3px;
+      max-width: 220px;
+      line-height: 1.4;
+      pointer-events: none;
+      white-space: pre-wrap;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+      transform: translate(-50%, -100%) translateY(-6px);
+    }
+    #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
     #err { position: absolute; top: 10px; left: 10px; right: 10px; max-height: 40vh; overflow: auto; padding: 10px; background: #200; color: #f88; font-size: 11px; display: none; white-space: pre-wrap; border: 1px solid #600; z-index: 100; }
   </style>
 </head>
@@ -71,11 +91,12 @@
     <div id="stage">
       <canvas id="canvas"></canvas>
       <div id="status">loading base model…</div>
+      <div id="storage" title="storage mode"></div>
       <pre id="err"></pre>
     </div>
 
     <aside id="right">
-      <h2>Items</h2>
+      <h2>Additions</h2>
       <ul id="items"></ul>
       <p id="empty">No objects placed yet.</p>
 
@@ -104,6 +125,9 @@
           <input id="inSy" type="number" step="0.05" min="0.01">
           <input id="inSz" type="number" step="0.05" min="0.01">
         </div>
+
+        <label>Note (3D billboard)</label>
+        <textarea id="inNote" placeholder="e.g. this wall is for the projector mount"></textarea>
       </div>
     </aside>
   </div>
